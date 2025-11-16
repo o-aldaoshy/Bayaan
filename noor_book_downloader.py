@@ -1,32 +1,61 @@
-import requests
+import cloudscraper
 from bs4 import BeautifulSoup
 import os
 import time
 from urllib.parse import urljoin, quote, unquote
 import logging
+import ssl
+import urllib3
+
+# Disable SSL warnings if verification is disabled
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 class NoorBookDownloader:
-    def __init__(self, download_dir='noor_books'):
+    def __init__(self, download_dir='noor_books', verify_ssl=False):
         self.base_url = 'https://www.noor-book.com'
         self.download_dir = download_dir
-        self.session = requests.Session()
-        # Headers to mimic a real browser
+        self.verify_ssl = verify_ssl
+
+        # Use cloudscraper to bypass Cloudflare and other anti-bot protection
+        self.session = cloudscraper.create_scraper(
+            browser={
+                'browser': 'chrome',
+                'platform': 'windows',
+                'desktop': True
+            },
+            debug=False
+        )
+
+        # Disable SSL verification if needed (some sites have certificate issues)
+        self.session.verify = self.verify_ssl
+        # Enhanced headers to mimic a real browser more closely
         self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'ar,en-US;q=0.7,en;q=0.3',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8',
             'Accept-Encoding': 'gzip, deflate, br',
             'DNT': '1',
             'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1'
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
+            'Cache-Control': 'max-age=0',
+            'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+            'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-platform': '"Windows"'
         })
 
         if not os.path.exists(download_dir):
             os.makedirs(download_dir)
+
+        # Visit homepage first to establish session and get cookies
+        self._initialize_session()
 
     def sanitize_filename(self, title):
         """Remove invalid filename characters and limit length"""
@@ -36,6 +65,19 @@ class NoorBookDownloader:
             if c.isalnum() or c in ' ._-' or '\u0600' <= c <= '\u06FF':
                 valid_chars.append(c)
         return ''.join(valid_chars).strip()[:150]
+
+    def _initialize_session(self):
+        """Initialize session by visiting homepage to get cookies"""
+        try:
+            logger.info("Initializing session with noor-book.com...")
+            response = self.session.get(self.base_url, timeout=30)
+            if response.status_code == 200:
+                logger.info("✅ Session initialized successfully")
+            else:
+                logger.warning(f"Homepage returned status code: {response.status_code}")
+            time.sleep(1)  # Small delay after initialization
+        except Exception as e:
+            logger.warning(f"Failed to initialize session: {e}")
 
     def get_category_page(self, category_url, page=1):
         """Fetch a category page"""
@@ -47,7 +89,14 @@ class NoorBookDownloader:
                 url = f"{category_url}?page={page}"
 
             logger.info(f"Fetching category page {page}: {url}")
-            response = self.session.get(url, timeout=30)
+
+            # Add referer header to make it look like we're browsing from the site
+            headers = {
+                'Referer': self.base_url if page == 1 else category_url,
+                'Sec-Fetch-Site': 'same-origin'
+            }
+
+            response = self.session.get(url, headers=headers, timeout=30)
             response.raise_for_status()
             return response.text
         except Exception as e:
@@ -101,7 +150,14 @@ class NoorBookDownloader:
         """
         try:
             logger.info(f"Fetching book page: {book_page_url}")
-            response = self.session.get(book_page_url, timeout=30)
+
+            # Add referer header
+            headers = {
+                'Referer': self.base_url,
+                'Sec-Fetch-Site': 'same-origin'
+            }
+
+            response = self.session.get(book_page_url, headers=headers, timeout=30)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, 'html.parser')
 
@@ -144,7 +200,14 @@ class NoorBookDownloader:
         """Download a file from URL"""
         try:
             logger.info(f"Downloading: {filename}")
-            response = self.session.get(url, timeout=60, stream=True)
+
+            # Add referer header
+            headers = {
+                'Referer': self.base_url,
+                'Sec-Fetch-Site': 'same-origin'
+            }
+
+            response = self.session.get(url, headers=headers, timeout=60, stream=True)
             response.raise_for_status()
 
             # Get total file size
