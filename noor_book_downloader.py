@@ -1,4 +1,4 @@
-import requests
+import cloudscraper
 from bs4 import BeautifulSoup
 import os
 import time
@@ -13,12 +13,20 @@ class NoorBookDownloader:
     def __init__(self, download_dir='noor_books'):
         self.base_url = 'https://www.noor-book.com'
         self.download_dir = download_dir
-        self.session = requests.Session()
-        # Headers to mimic a real browser
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+
+        # Use cloudscraper to bypass Cloudflare protection
+        self.scraper = cloudscraper.create_scraper(
+            browser={
+                'browser': 'chrome',
+                'platform': 'windows',
+                'mobile': False
+            }
+        )
+
+        # Additional headers to make requests more realistic
+        self.scraper.headers.update({
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'ar,en-US;q=0.7,en;q=0.3',
+            'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8',
             'Accept-Encoding': 'gzip, deflate, br',
             'DNT': '1',
             'Connection': 'keep-alive',
@@ -40,16 +48,28 @@ class NoorBookDownloader:
     def get_category_page(self, category_url, page=1):
         """Fetch a category page"""
         try:
-            # Many websites use ?page=N or /page/N for pagination
-            if '?' in category_url:
-                url = f"{category_url}&page={page}"
+            # For noor-book.com, pagination might be in the URL or use AJAX
+            # Check different pagination patterns
+            if page == 1:
+                url = category_url
             else:
-                url = f"{category_url}?page={page}"
+                # Try common pagination patterns
+                if '?' in category_url:
+                    url = f"{category_url}&page={page}"
+                else:
+                    url = f"{category_url}?page={page}"
 
             logger.info(f"Fetching category page {page}: {url}")
-            response = self.session.get(url, timeout=30)
+            response = self.scraper.get(url, timeout=30)
             response.raise_for_status()
-            return response.text
+
+            if response.status_code == 200:
+                logger.info(f"✅ Successfully fetched page {page} ({len(response.text)} bytes)")
+                return response.text
+            else:
+                logger.error(f"❌ Failed with status code: {response.status_code}")
+                return None
+
         except Exception as e:
             logger.error(f"Error fetching category page {page}: {e}")
             return None
@@ -57,94 +77,96 @@ class NoorBookDownloader:
     def extract_book_links(self, html_content):
         """
         Extract book page links from category page
-
-        NOTE: You need to inspect the website and update the selectors below
-        Common patterns:
-        - Books might be in <div class="book-item"> or <article class="book">
-        - Links might be in <a class="book-link"> or <h3><a href="...">
+        Based on noor-book.com structure analysis
         """
         soup = BeautifulSoup(html_content, 'html.parser')
         book_links = []
 
-        # CUSTOMIZE THESE SELECTORS based on the actual website structure
-        # Example patterns (you'll need to update these):
+        # Find all book containers (note the typo in the class name)
+        book_containers = soup.find_all('div', class_='book-restult')
 
-        # Option 1: Find all links with specific class
-        # books = soup.find_all('a', class_='book-title-link')
+        logger.info(f"Found {len(book_containers)} book containers")
 
-        # Option 2: Find all articles/divs containing books
-        # book_containers = soup.find_all('div', class_='book-item')
-        # for container in book_containers:
-        #     link = container.find('a')
-        #     if link and link.get('href'):
-        #         book_links.append(urljoin(self.base_url, link['href']))
+        for container in book_containers:
+            # Find the link with class 'img-a'
+            link = container.find('a', class_='img-a')
+            if link and link.get('href'):
+                book_url = urljoin(self.base_url, link['href'])
+                title = link.get('title', 'Unknown')
 
-        # Option 3: Generic approach - find all links that look like book pages
-        all_links = soup.find_all('a', href=True)
-        for link in all_links:
-            href = link.get('href', '')
-            # Adjust this pattern based on actual book URL structure
-            # e.g., /book/12345 or /كتاب/... or /en/book/...
-            if '/كتاب/' in href or '/book/' in href or 'book-' in href:
-                full_url = urljoin(self.base_url, href)
-                if full_url not in book_links:
-                    book_links.append(full_url)
+                if book_url not in book_links:
+                    book_links.append((book_url, title))
+                    logger.debug(f"  Found: {title}")
 
-        logger.info(f"Found {len(book_links)} book links")
+        logger.info(f"Extracted {len(book_links)} unique book links")
         return book_links
 
-    def get_download_link(self, book_page_url):
+    def get_download_link(self, book_page_url, book_title=None):
         """
         Extract the actual PDF/file download link from a book's page
-
-        NOTE: You need to inspect individual book pages to find the download button/link
         """
         try:
             logger.info(f"Fetching book page: {book_page_url}")
-            response = self.session.get(book_page_url, timeout=30)
+            response = self.scraper.get(book_page_url, timeout=30)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, 'html.parser')
 
-            # Extract book title
-            # CUSTOMIZE: Update selector based on actual page structure
-            title_elem = soup.find('h1') or soup.find('title')
-            title = title_elem.get_text().strip() if title_elem else "Unknown"
+            # Extract book title if not provided
+            if not book_title:
+                title_elem = soup.find('h1') or soup.find('title')
+                title = title_elem.get_text().strip() if title_elem else "Unknown"
+            else:
+                title = book_title
 
-            # CUSTOMIZE: Find the download link
-            # Common patterns:
-            # - <a class="download-btn" href="...">
-            # - <a href="..." download>
-            # - <button onclick="download('url')">
+            # Look for download links
+            # Common patterns on noor-book.com:
+            # 1. Direct download button/link
+            # 2. Link with 'download' in class or text
+            # 3. Link ending in .pdf, .epub, etc.
 
-            # Option 1: Direct download link
-            download_link = soup.find('a', class_='download-button')
+            # Try to find download button
+            download_link = soup.find('a', class_='download-btn') or \
+                           soup.find('a', class_='btn-download') or \
+                           soup.find('a', class_='download')
+
             if download_link and download_link.get('href'):
                 return title, urljoin(self.base_url, download_link['href'])
 
-            # Option 2: Find any link with 'download' in class or text
-            download_links = soup.find_all('a', href=True)
-            for link in download_links:
+            # Look for links with 'download' or 'تحميل' in text
+            all_links = soup.find_all('a', href=True)
+            for link in all_links:
                 link_text = link.get_text().lower()
                 link_class = ' '.join(link.get('class', [])).lower()
                 href = link.get('href', '')
 
-                if 'تحميل' in link_text or 'download' in link_text or \
-                   'download' in link_class or 'تحميل' in link_class or \
-                   href.endswith('.pdf') or href.endswith('.epub'):
+                # Check for download indicators
+                if any(keyword in link_text for keyword in ['تحميل', 'download', 'pdf', 'read']):
+                    if href.endswith(('.pdf', '.epub', '.mobi')) or 'download' in href or 'pdf' in href:
+                        return title, urljoin(self.base_url, href)
+
+                # Check class names
+                if 'download' in link_class or 'تحميل' in link_class:
                     return title, urljoin(self.base_url, href)
 
             logger.warning(f"No download link found for: {book_page_url}")
+
+            # Save HTML for debugging
+            debug_file = f"debug_book_page_{int(time.time())}.html"
+            with open(debug_file, 'w', encoding='utf-8') as f:
+                f.write(response.text[:10000])  # First 10KB
+            logger.info(f"📄 Saved page sample to: {debug_file}")
+
             return title, None
 
         except Exception as e:
             logger.error(f"Error extracting download link from {book_page_url}: {e}")
-            return "Unknown", None
+            return book_title or "Unknown", None
 
     def download_file(self, url, filename):
         """Download a file from URL"""
         try:
             logger.info(f"Downloading: {filename}")
-            response = self.session.get(url, timeout=60, stream=True)
+            response = self.scraper.get(url, timeout=60, stream=True)
             response.raise_for_status()
 
             # Get total file size
@@ -171,7 +193,7 @@ class NoorBookDownloader:
             logger.error(f"❌ Failed to download {filename}: {e}")
             return False
 
-    def download_category(self, category_url, max_pages=10, max_books=None, delay=2):
+    def download_category(self, category_url, max_pages=10, max_books=None, delay=3):
         """
         Download all books from a category
 
@@ -189,10 +211,15 @@ class NoorBookDownloader:
         if not os.path.exists(category_dir):
             os.makedirs(category_dir)
 
+        logger.info(f"\n{'='*80}")
+        logger.info(f"Starting download from: {unquote(category_url)}")
+        logger.info(f"Saving to: {category_dir}")
+        logger.info(f"{'='*80}\n")
+
         for page in range(1, max_pages + 1):
-            logger.info(f"\n{'='*60}")
+            logger.info(f"\n{'='*80}")
             logger.info(f"Processing page {page}/{max_pages}")
-            logger.info(f"{'='*60}")
+            logger.info(f"{'='*80}")
 
             # Fetch category page
             html_content = self.get_category_page(category_url, page)
@@ -207,18 +234,19 @@ class NoorBookDownloader:
                 break
 
             # Process each book
-            for i, book_url in enumerate(book_links, 1):
+            for i, (book_url, book_title) in enumerate(book_links, 1):
                 if max_books and downloaded_count >= max_books:
-                    logger.info(f"Reached maximum book limit ({max_books})")
+                    logger.info(f"\n✅ Reached maximum book limit ({max_books})")
                     return
 
                 logger.info(f"\n[{downloaded_count + 1}] Processing book {i}/{len(book_links)}")
+                logger.info(f"Title: {book_title}")
 
                 # Get download link
-                title, download_url = self.get_download_link(book_url)
+                title, download_url = self.get_download_link(book_url, book_title)
 
                 if not download_url:
-                    logger.warning(f"Skipping - no download link: {title}")
+                    logger.warning(f"⚠️  Skipping - no download link found")
                     time.sleep(delay / 2)
                     continue
 
@@ -247,28 +275,28 @@ class NoorBookDownloader:
                 time.sleep(delay)
 
             # Delay between pages
-            logger.info(f"Page {page} complete. Waiting before next page...")
+            logger.info(f"\nPage {page} complete. Waiting before next page...")
             time.sleep(delay * 2)
 
-        logger.info(f"\n{'='*60}")
-        logger.info(f"✅ Download complete! Total books downloaded: {downloaded_count}")
-        logger.info(f"{'='*60}")
+        logger.info(f"\n{'='*80}")
+        logger.info(f"✅ Download complete! Total books processed: {downloaded_count}")
+        logger.info(f"{'='*80}")
 
 
 def main():
     """Main function to run the downloader"""
 
-    # Initialize downloader
+    # Initialize downloader with cloudscraper
     downloader = NoorBookDownloader(download_dir='noor_books')
 
-    # Category URL - the one you provided
+    # Category URL - Islamic ethics and morals
     category_url = 'https://www.noor-book.com/tag/%D8%A2%D8%AF%D8%A7%D8%A8-%D9%88%D8%A3%D8%AE%D9%84%D8%A7%D9%82-%D8%A5%D8%B3%D9%84%D8%A7%D9%85%D9%8A%D8%A9'
 
     # Download books from category
     downloader.download_category(
         category_url=category_url,
-        max_pages=10,        # Scrape up to 10 pages
-        max_books=50,        # Download up to 50 books (set to None for all)
+        max_pages=5,         # Scrape up to 5 pages
+        max_books=10,        # Download up to 10 books (set to None for all)
         delay=3              # 3 second delay between requests
     )
 
