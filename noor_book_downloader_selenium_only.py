@@ -593,9 +593,9 @@ def download_books_from_category(scraper, category_url, max_pages=5, batch_size=
                 _, author = scraper.extract_metadata(book_page)
                 print(f"✍️  {author}")
 
-                # Prepare filename using title from modal
+                # Prepare filename using title (no numbering)
                 filename = sanitize_filename(title)
-                local_path = os.path.join(download_dir, f"{downloaded_count+1:04d}_{filename}{file_ext}")
+                local_path = os.path.join(download_dir, f"{filename}{file_ext}")
 
                 # Skip if exists and valid
                 if os.path.exists(local_path) and validate_file(local_path):
