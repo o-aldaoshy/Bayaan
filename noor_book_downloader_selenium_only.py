@@ -318,7 +318,7 @@ class NoorBookSeleniumScraper:
 
 
     def get_download_link(self, book_url):
-        """Get download link from book page"""
+        """Get download link from book page and extract title from modal"""
         print(f"📖 Getting download link from: {book_url}")
 
         try:
@@ -351,7 +351,7 @@ class NoorBookSeleniumScraper:
 
             if not download_button:
                 print("❌ Download button not found")
-                return None, "", ".pdf"
+                return None, "", ".pdf", "Unknown Title"
 
             # Click download button
             self.driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", download_button)
@@ -360,8 +360,20 @@ class NoorBookSeleniumScraper:
             random_delay(0.5, 1)
             self.driver.execute_script("arguments[0].click();", download_button)
 
-            print("⏳ Waiting for download link to appear...")
+            print("⏳ Waiting for download modal to appear...")
             random_delay(8, 12)
+
+            # Extract title from modal
+            title = "Unknown Title"
+            try:
+                modal_title = self.wait.until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, ".modal-title, h4.modal-title"))
+                )
+                title = modal_title.text.strip()
+                if title:
+                    print(f"📚 Title from modal: {title}")
+            except:
+                print("⚠ Could not extract title from modal")
 
             # Try multiple selectors for download link
             download_link = None
@@ -385,7 +397,7 @@ class NoorBookSeleniumScraper:
 
             if not download_link:
                 print("❌ Download link not found")
-                return None, "", ".pdf"
+                return None, "", ".pdf", title
 
             download_url = download_link.get_attribute("href")
 
@@ -408,12 +420,12 @@ class NoorBookSeleniumScraper:
             elif ".djvu" in url_lower:
                 file_ext = ".djvu"
 
-            return download_url, size_text, file_ext
+            return download_url, size_text, file_ext, title
 
         except Exception as e:
             print(f"❌ Error getting download link: {e}")
             self.driver.save_screenshot("download_error.png")
-            return None, "", ".pdf"
+            return None, "", ".pdf", "Unknown Title"
 
 
     def download_file(self, url, target_filepath):
@@ -561,24 +573,21 @@ def download_books_from_category(scraper, category_url, max_pages=5, batch_size=
             try:
                 random_delay(2, 4)
 
-                # Navigate to book page first (for metadata)
-                scraper.driver.get(book_page)
-                random_delay(2, 3)
-
-                # Get metadata
-                title, author = scraper.extract_metadata(book_page)
-                print(f"📚 {title}")
-                print(f"✍️  {author}")
-
-                # Get download link
-                download_url, size_text, file_ext = scraper.get_download_link(book_page)
+                # Get download link and title from modal
+                download_url, size_text, file_ext, title = scraper.get_download_link(book_page)
 
                 if not download_url:
                     print("❌ No download link")
                     failed_count += 1
                     continue
 
-                # Prepare filename
+                # Also get author from book page
+                scraper.driver.get(book_page)
+                random_delay(1, 2)
+                _, author = scraper.extract_metadata(book_page)
+                print(f"✍️  {author}")
+
+                # Prepare filename using title from modal
                 filename = sanitize_filename(title)
                 local_path = os.path.join(download_dir, f"{downloaded_count+1:04d}_{filename}{file_ext}")
 
