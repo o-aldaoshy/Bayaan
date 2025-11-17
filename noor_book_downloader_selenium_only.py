@@ -318,12 +318,30 @@ class NoorBookSeleniumScraper:
 
 
     def get_download_link(self, book_url):
-        """Get download link from book page and extract title from modal"""
+        """Get download link from book page and extract title"""
         print(f"📖 Getting download link from: {book_url}")
 
         try:
             self.driver.get(book_url)
             random_delay(4, 6)
+
+            # Extract title from book page FIRST
+            title = "Unknown Title"
+            try:
+                # Try to find title in span#trans_title_here
+                title_element = self.driver.find_element(By.CSS_SELECTOR, "span#trans_title_here")
+                title = title_element.text.strip()
+                if title:
+                    print(f"📚 Title from page: {title}")
+            except:
+                # Fallback to h2.under_img_title
+                try:
+                    title_element = self.driver.find_element(By.CSS_SELECTOR, "h2.under_img_title")
+                    title = title_element.text.strip()
+                    if title:
+                        print(f"📚 Title from page (fallback): {title}")
+                except:
+                    print("⚠ Could not extract title from page")
 
             # Scroll to download area
             scroll_amount = random.randint(700, 900)
@@ -351,7 +369,7 @@ class NoorBookSeleniumScraper:
 
             if not download_button:
                 print("❌ Download button not found")
-                return None, "", ".pdf", "Unknown Title"
+                return None, "", ".pdf", title
 
             # Click download button
             self.driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", download_button)
@@ -360,20 +378,8 @@ class NoorBookSeleniumScraper:
             random_delay(0.5, 1)
             self.driver.execute_script("arguments[0].click();", download_button)
 
-            print("⏳ Waiting for download modal to appear...")
+            print("⏳ Waiting for download link to appear...")
             random_delay(8, 12)
-
-            # Extract title from modal
-            title = "Unknown Title"
-            try:
-                modal_title = self.wait.until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, ".modal-title, h4.modal-title"))
-                )
-                title = modal_title.text.strip()
-                if title:
-                    print(f"📚 Title from modal: {title}")
-            except:
-                print("⚠ Could not extract title from modal")
 
             # Try multiple selectors for download link
             download_link = None
