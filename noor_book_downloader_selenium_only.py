@@ -526,70 +526,77 @@ class NoorBookSeleniumScraper:
 # MAIN DOWNLOAD FUNCTION
 # =====================================================
 
-def download_books_from_category(scraper, category_url, max_pages=5, batch_size=10,
+def download_books_from_category(scraper, category_url, max_scrolls=100, batch_size=10,
                                  download_dir="noor_books", metadata_file="metadata.csv"):
+    """
+    Download books from a category with infinite scroll
 
+    Args:
+        max_scrolls: Maximum number of times to scroll down (default 100)
+    """
     os.makedirs(download_dir, exist_ok=True)
 
     csv_exists = os.path.exists(metadata_file)
     downloaded_count = 0
     failed_count = 0
-    empty_pages = 0  # Track consecutive empty pages
-    max_empty_pages = 3  # Stop after 3 consecutive empty pages
+    processed_urls = set()  # Track books we've already processed
 
-    for page in range(1, max_pages + 1):
-        print(f"\n{'='*60}")
-        print(f"📄 Page {page}/{max_pages}")
-        print(f"{'='*60}")
+    print(f"\n{'='*60}")
+    print(f"📄 Loading category with infinite scroll")
+    print(f"🔗 URL: {category_url}")
+    print(f"{'='*60}")
 
-        # Build URL
-        if page == 1:
-            url = category_url
-        else:
-            url = f"{category_url}/page-{page}" if '?' not in category_url else f"{category_url}&page={page}"
+    # Navigate to category page once
+    scraper.driver.get(category_url)
+    random_delay(3, 5)
 
-        print(f"🔗 URL: {url}")
+    scroll_attempts = 0
+    no_new_books_count = 0
 
-        # Get page
-        random_delay(2, 4)
-        html = scraper.get_page_source(url)
-        if not html:
-            print("❌ Failed to load page")
-            empty_pages += 1
-            if empty_pages >= max_empty_pages:
-                print(f"⚠ Stopping after {max_empty_pages} consecutive failed pages")
-                break
-            continue
+    while scroll_attempts < max_scrolls:
+        scroll_attempts += 1
 
+        print(f"\n📜 Scroll {scroll_attempts}/{max_scrolls}")
+
+        # Get current page HTML
+        html = scraper.driver.page_source
         soup = BeautifulSoup(html, "html.parser")
 
-        # Find books
+        # Find all books currently visible
         cards = soup.find_all("div", class_="book-restult")
         if not cards:
             cards = soup.find_all("div", class_="book-result")
         if not cards:
             cards = soup.find_all("div", class_="book-card")
 
-        if not cards:
-            print(f"⚠ No books found on page {page}")
-            empty_pages += 1
-            if empty_pages >= max_empty_pages:
-                print(f"⚠ Stopping after {max_empty_pages} consecutive empty pages")
-                break
-            print(f"📌 Continuing to next page ({empty_pages}/{max_empty_pages} empty pages so far)")
-            continue
+        print(f"✅ Found {len(cards)} total books on page")
 
-        # Reset empty page counter when we find books
-        empty_pages = 0
-        print(f"✅ Found {len(cards)} books")
-
-        for idx, card in enumerate(cards, 1):
+        # Extract book URLs
+        current_books = []
+        for card in cards:
             book_link = card.find("a", href=True)
-            if not book_link:
-                continue
+            if book_link:
+                book_url = "https://www.noor-book.com" + book_link["href"]
+                if book_url not in processed_urls:
+                    current_books.append(book_url)
 
-            book_page = "https://www.noor-book.com" + book_link["href"]
-            print(f"\n[{idx}/{len(cards)}] 🔎 {book_page}")
+        new_books_count = len(current_books)
+        print(f"📚 New books found: {new_books_count}")
+
+        if new_books_count == 0:
+            no_new_books_count += 1
+            print(f"⚠ No new books ({no_new_books_count}/3)")
+
+            if no_new_books_count >= 3:
+                print("⚠ No new books after 3 scrolls, stopping")
+                break
+        else:
+            no_new_books_count = 0  # Reset counter when we find new books
+
+        # Process new books
+        for idx, book_page in enumerate(current_books, 1):
+            print(f"\n[{idx}/{new_books_count}] 🔎 {book_page}")
+            processed_urls.add(book_page)  # Mark as processed
 
             try:
                 random_delay(2, 4)
@@ -651,8 +658,18 @@ def download_books_from_category(scraper, category_url, max_pages=5, batch_size=
                 print(f"❌ Error: {e}")
                 failed_count += 1
 
-        print(f"\n⏸  Page complete, waiting...")
-        random_delay(5, 8)
+            # Navigate back to category page for next book
+            scraper.driver.get(category_url)
+            random_delay(2, 3)
+
+        # Scroll down to load more books
+        print(f"\n📜 Scrolling down to load more books...")
+
+        # Scroll to bottom of page
+        scraper.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+
+        # Wait for new content to load
+        random_delay(3, 5)
 
     print(f"\n{'='*60}")
     print(f"🎉 Complete!")
@@ -696,7 +713,7 @@ if __name__ == "__main__":
         download_books_from_category(
             scraper,
             CATEGORY_URL,
-            max_pages=5,
+            max_scrolls=100,  # Maximum number of scrolls (not pages!)
             batch_size=10,
             download_dir="noor_books",
             metadata_file="metadata.csv"
