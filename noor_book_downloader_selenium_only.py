@@ -9,7 +9,6 @@ from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.action_chains import ActionChains
 import os
 import csv
-import requests
 
 
 # =====================================================
@@ -68,7 +67,7 @@ def validate_file(file_path, min_size=1024):
 # =====================================================
 
 class NoorBookSeleniumScraper:
-    def __init__(self, headless=False):
+    def __init__(self, headless=False, download_dir="noor_books"):
         """Initialize Selenium driver that stays alive for entire session"""
         print("🌐 Launching Chrome browser (VISIBLE MODE - You can see CAPTCHA)...")
 
@@ -86,17 +85,33 @@ class NoorBookSeleniumScraper:
         window_height = random.randint(800, 1080)
         options.add_argument(f"--window-size={window_width},{window_height}")
 
-        # Keep downloads in memory or specify download path
+        # Set download directory
+        self.download_dir = os.path.abspath(download_dir)
+        os.makedirs(self.download_dir, exist_ok=True)
+
+        # Configure Chrome to download files automatically
         prefs = {
-            "download.default_directory": os.path.abspath("noor_books"),
+            "download.default_directory": self.download_dir,
             "download.prompt_for_download": False,
-            "plugins.always_open_pdf_externally": True
+            "download.directory_upgrade": True,
+            "safebrowsing.enabled": True,
+            "plugins.always_open_pdf_externally": True,  # Don't open PDFs in browser
+            "profile.default_content_setting_values.automatic_downloads": 1
         }
         options.add_experimental_option("prefs", prefs)
 
         self.driver = uc.Chrome(options=options, use_subprocess=True)
         self.driver.set_page_load_timeout(60)
         self.wait = WebDriverWait(self.driver, 30)
+
+        # Enable downloads (especially important for headless mode)
+        try:
+            self.driver.execute_cdp_cmd("Page.setDownloadBehavior", {
+                "behavior": "allow",
+                "downloadPath": self.download_dir
+            })
+        except Exception as e:
+            print(f"⚠ Could not set download behavior: {e}")
 
 
     def login(self, email, password):
@@ -401,25 +416,61 @@ class NoorBookSeleniumScraper:
             return None, "", ".pdf"
 
 
-    def download_file(self, url, filepath):
-        """Download file using requests (with cookies from Selenium)"""
+    def download_file(self, url, target_filepath):
+        """Download file using Selenium browser (avoids 403 errors)"""
         try:
-            # Get cookies from Selenium
-            selenium_cookies = self.driver.get_cookies()
+            print(f"🔗 Initiating download via browser...")
 
-            # Create requests session with Selenium cookies
-            session = requests.Session()
-            for cookie in selenium_cookies:
-                session.cookies.set(cookie['name'], cookie['value'])
+            # Get list of files before download
+            files_before = set(os.listdir(self.download_dir))
 
-            # Download file
-            response = session.get(url, timeout=120, stream=True)
-            response.raise_for_status()
+            # Navigate to download URL - browser will download automatically
+            self.driver.get(url)
 
-            with open(filepath, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
+            print("⏳ Waiting for download to complete...")
+
+            # Wait for new file to appear (max 120 seconds)
+            max_wait = 120
+            waited = 0
+            new_file = None
+
+            while waited < max_wait:
+                time.sleep(1)
+                waited += 1
+
+                files_after = set(os.listdir(self.download_dir))
+                new_files = files_after - files_before
+
+                # Filter out .crdownload and .tmp files (incomplete downloads)
+                complete_files = [f for f in new_files if not f.endswith('.crdownload') and not f.endswith('.tmp')]
+
+                if complete_files:
+                    new_file = complete_files[0]
+                    break
+
+                # Progress indicator every 10 seconds
+                if waited % 10 == 0:
+                    print(f"⏳ Still waiting... ({waited}s)")
+
+            if not new_file:
+                print("❌ Download timeout - file did not appear")
+                return False
+
+            # Path to downloaded file
+            downloaded_path = os.path.join(self.download_dir, new_file)
+
+            # Wait a bit more to ensure file is completely written
+            time.sleep(2)
+
+            # Rename to target filename
+            if downloaded_path != target_filepath:
+                # If target already exists, remove it
+                if os.path.exists(target_filepath):
+                    os.remove(target_filepath)
+                os.rename(downloaded_path, target_filepath)
+                print(f"✅ Downloaded and renamed to: {os.path.basename(target_filepath)}")
+            else:
+                print(f"✅ Downloaded: {os.path.basename(target_filepath)}")
 
             return True
 
@@ -599,7 +650,7 @@ if __name__ == "__main__":
 
     try:
         # Initialize scraper (browser visible)
-        scraper = NoorBookSeleniumScraper(headless=False)
+        scraper = NoorBookSeleniumScraper(headless=False, download_dir="noor_books")
 
         # Login
         print("\n📌 STEP 1: Logging in...")
