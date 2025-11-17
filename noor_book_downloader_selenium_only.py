@@ -506,11 +506,27 @@ class NoorBookSeleniumScraper:
             title_tag = soup.find("h1", class_="book-title")
             title = title_tag.text.strip() if title_tag else "Unknown Title"
 
-            author_tag = soup.find("a", class_="book-author")
-            author = author_tag.text.strip() if author_tag else "Unknown Author"
+            # Try multiple selectors for author
+            author = "Unknown Author"
+
+            # Primary: span#book-writer
+            author_tag = soup.find("span", id="book-writer")
+            if author_tag:
+                author = author_tag.text.strip()
+            else:
+                # Fallback: span with itemprop="name"
+                author_tag = soup.find("span", itemprop="name")
+                if author_tag:
+                    author = author_tag.text.strip()
+                else:
+                    # Old fallback: a.book-author
+                    author_tag = soup.find("a", class_="book-author")
+                    if author_tag:
+                        author = author_tag.text.strip()
 
             return title, author
-        except:
+        except Exception as e:
+            print(f"⚠ Error extracting metadata: {e}")
             return "Unknown Title", "Unknown Author"
 
 
