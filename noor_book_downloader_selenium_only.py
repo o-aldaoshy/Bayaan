@@ -534,6 +534,8 @@ def download_books_from_category(scraper, category_url, max_pages=5, batch_size=
     csv_exists = os.path.exists(metadata_file)
     downloaded_count = 0
     failed_count = 0
+    empty_pages = 0  # Track consecutive empty pages
+    max_empty_pages = 3  # Stop after 3 consecutive empty pages
 
     for page in range(1, max_pages + 1):
         print(f"\n{'='*60}")
@@ -546,11 +548,17 @@ def download_books_from_category(scraper, category_url, max_pages=5, batch_size=
         else:
             url = f"{category_url}/page-{page}" if '?' not in category_url else f"{category_url}&page={page}"
 
+        print(f"🔗 URL: {url}")
+
         # Get page
         random_delay(2, 4)
         html = scraper.get_page_source(url)
         if not html:
             print("❌ Failed to load page")
+            empty_pages += 1
+            if empty_pages >= max_empty_pages:
+                print(f"⚠ Stopping after {max_empty_pages} consecutive failed pages")
+                break
             continue
 
         soup = BeautifulSoup(html, "html.parser")
@@ -563,9 +571,16 @@ def download_books_from_category(scraper, category_url, max_pages=5, batch_size=
             cards = soup.find_all("div", class_="book-card")
 
         if not cards:
-            print("⚠ No books found")
-            break
+            print(f"⚠ No books found on page {page}")
+            empty_pages += 1
+            if empty_pages >= max_empty_pages:
+                print(f"⚠ Stopping after {max_empty_pages} consecutive empty pages")
+                break
+            print(f"📌 Continuing to next page ({empty_pages}/{max_empty_pages} empty pages so far)")
+            continue
 
+        # Reset empty page counter when we find books
+        empty_pages = 0
         print(f"✅ Found {len(cards)} books")
 
         for idx, card in enumerate(cards, 1):
