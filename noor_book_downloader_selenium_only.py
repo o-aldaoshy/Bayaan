@@ -555,24 +555,26 @@ def download_books_from_category(scraper, category_url, max_scrolls=100, batch_s
     csv_exists = os.path.exists(metadata_file)
     downloaded_count = 0
     failed_count = 0
-    processed_urls = set()  # Track books we've already processed
 
     print(f"\n{'='*60}")
     print(f"📄 Loading category with infinite scroll")
     print(f"🔗 URL: {category_url}")
     print(f"{'='*60}")
 
-    # Navigate to category page once
+    # Navigate to category page
     scraper.driver.get(category_url)
     random_delay(3, 5)
 
+    # ===== PHASE 1: Scroll and collect ALL book URLs =====
+    print("\n📜 PHASE 1: Scrolling to load all books...")
+
+    all_book_urls = set()
     scroll_attempts = 0
     no_new_books_count = 0
+    last_count = 0
 
     while scroll_attempts < max_scrolls:
         scroll_attempts += 1
-
-        print(f"\n📜 Scroll {scroll_attempts}/{max_scrolls}")
 
         # Get current page HTML
         html = scraper.driver.page_source
@@ -585,107 +587,103 @@ def download_books_from_category(scraper, category_url, max_scrolls=100, batch_s
         if not cards:
             cards = soup.find_all("div", class_="book-card")
 
-        print(f"✅ Found {len(cards)} total books on page")
-
         # Extract book URLs
-        current_books = []
         for card in cards:
             book_link = card.find("a", href=True)
             if book_link:
                 book_url = "https://www.noor-book.com" + book_link["href"]
-                if book_url not in processed_urls:
-                    current_books.append(book_url)
+                all_book_urls.add(book_url)
 
-        new_books_count = len(current_books)
-        print(f"📚 New books found: {new_books_count}")
+        current_count = len(all_book_urls)
+        new_found = current_count - last_count
 
-        if new_books_count == 0:
+        print(f"📜 Scroll {scroll_attempts}/{max_scrolls} - Total books: {current_count} (+{new_found} new)")
+
+        if new_found == 0:
             no_new_books_count += 1
-            print(f"⚠ No new books ({no_new_books_count}/3)")
-
-            if no_new_books_count >= 3:
-                print("⚠ No new books after 3 scrolls, stopping")
+            if no_new_books_count >= 5:  # Increased to 5 for better coverage
+                print("⚠ No new books after 5 scrolls, all books loaded")
                 break
         else:
             no_new_books_count = 0  # Reset counter when we find new books
 
-        # Process new books
-        for idx, book_page in enumerate(current_books, 1):
-            print(f"\n[{idx}/{new_books_count}] 🔎 {book_page}")
-            processed_urls.add(book_page)  # Mark as processed
-
-            try:
-                random_delay(2, 4)
-
-                # Get download link and title from modal
-                download_url, size_text, file_ext, title = scraper.get_download_link(book_page)
-
-                if not download_url:
-                    print("❌ No download link")
-                    failed_count += 1
-                    continue
-
-                # Also get author from book page
-                scraper.driver.get(book_page)
-                random_delay(1, 2)
-                _, author = scraper.extract_metadata(book_page)
-                print(f"✍️  {author}")
-
-                # Prepare filename using title (no numbering)
-                filename = sanitize_filename(title)
-                local_path = os.path.join(download_dir, f"{filename}{file_ext}")
-
-                # Skip if exists and valid
-                if os.path.exists(local_path) and validate_file(local_path):
-                    print(f"✅ Already exists: {local_path}")
-                    downloaded_count += 1
-                    continue
-
-                print(f"⬇️  Downloading ({size_text})...")
-
-                # Download
-                if not scraper.download_file(download_url, local_path):
-                    failed_count += 1
-                    continue
-
-                # Validate
-                if not validate_file(local_path):
-                    print("❌ File validation failed")
-                    os.remove(local_path)
-                    failed_count += 1
-                    continue
-
-                print(f"✅ Saved: {local_path}")
-                downloaded_count += 1
-
-                # Save metadata
-                with open(metadata_file, "a", newline="", encoding="utf-8-sig") as f:
-                    writer = csv.writer(f)
-                    if not csv_exists or downloaded_count == 1:
-                        writer.writerow(["Title", "Author", "Size", "Download Link", "Page URL", "Local Filename"])
-                        csv_exists = True
-                    writer.writerow([title, author, size_text, download_url, book_page, local_path])
-
-                if downloaded_count % batch_size == 0:
-                    print(f"⏸  Batch pause...")
-                    random_delay(10, 15)
-
-            except Exception as e:
-                print(f"❌ Error: {e}")
-                failed_count += 1
-
-            # Navigate back to category page for next book
-            scraper.driver.get(category_url)
-            random_delay(2, 3)
+        last_count = current_count
 
         # Scroll down to load more books
-        print(f"\n📜 Scrolling down to load more books...")
-
-        # Scroll to bottom of page
         scraper.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        random_delay(2, 4)
 
-        # Wait for new content to load
-        random_delay(3, 5)
+    print(f"\n✅ Found {len(all_book_urls)} total books to download")
+
+    # ===== PHASE 2: Download each book =====
+    print("\n📥 PHASE 2: Downloading books...")
+
+    book_list = list(all_book_urls)
+    total_books = len(book_list)
+
+    for idx, book_page in enumerate(book_list, 1):
+        print(f"\n[{idx}/{total_books}] 🔎 {book_page}")
+
+        try:
+            random_delay(2, 4)
+
+            # Get download link and title
+            download_url, size_text, file_ext, title = scraper.get_download_link(book_page)
+
+            if not download_url:
+                print("❌ No download link")
+                failed_count += 1
+                continue
+
+            # Get author from book page
+            scraper.driver.get(book_page)
+            random_delay(1, 2)
+            _, author = scraper.extract_metadata(book_page)
+            print(f"✍️  {author}")
+
+            # Prepare filename using title (no numbering)
+            filename = sanitize_filename(title)
+            local_path = os.path.join(download_dir, f"{filename}{file_ext}")
+
+            # Skip if exists and valid
+            if os.path.exists(local_path) and validate_file(local_path):
+                print(f"✅ Already exists: {local_path}")
+                downloaded_count += 1
+                continue
+
+            print(f"⬇️  Downloading ({size_text})...")
+
+            # Download
+            if not scraper.download_file(download_url, local_path):
+                failed_count += 1
+                continue
+
+            # Validate
+            if not validate_file(local_path):
+                print("❌ File validation failed")
+                if os.path.exists(local_path):
+                    os.remove(local_path)
+                failed_count += 1
+                continue
+
+            print(f"✅ Saved: {local_path}")
+            downloaded_count += 1
+
+            # Save metadata
+            with open(metadata_file, "a", newline="", encoding="utf-8-sig") as f:
+                writer = csv.writer(f)
+                if not csv_exists or downloaded_count == 1:
+                    writer.writerow(["Title", "Author", "Size", "Download Link", "Page URL", "Local Filename"])
+                    csv_exists = True
+                writer.writerow([title, author, size_text, download_url, book_page, local_path])
+
+            if downloaded_count % batch_size == 0:
+                print(f"⏸  Batch pause...")
+                random_delay(10, 15)
+
+        except Exception as e:
+            print(f"❌ Error: {e}")
+            failed_count += 1
 
     print(f"\n{'='*60}")
     print(f"🎉 Complete!")
