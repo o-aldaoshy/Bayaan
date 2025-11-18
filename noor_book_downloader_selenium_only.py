@@ -609,9 +609,50 @@ def download_books_from_category(scraper, category_url, max_scrolls=100, batch_s
 
         last_count = current_count
 
-        # Scroll down to load more books
+        # Try multiple scroll methods to trigger infinite scroll
+
+        # Method 1: Try clicking "load more" button if it exists
+        try:
+            load_more_selectors = [
+                ".load-more",
+                ".loadmore",
+                "#load-more",
+                "button.more",
+                "a.more",
+                ".btn-load-more",
+                "[data-load-more]"
+            ]
+            for selector in load_more_selectors:
+                try:
+                    load_more_btn = scraper.driver.find_element(By.CSS_SELECTOR, selector)
+                    if load_more_btn.is_displayed():
+                        scraper.driver.execute_script("arguments[0].click();", load_more_btn)
+                        print(f"🖱️ Clicked load more button: {selector}")
+                        random_delay(3, 5)
+                        break
+                except:
+                    continue
+        except:
+            pass
+
+        # Method 2: Scroll to the last book card (more reliable than page bottom)
+        try:
+            last_card = scraper.driver.find_elements(By.CSS_SELECTOR, "div.book-restult, div.book-result, div.book-card")
+            if last_card:
+                scraper.driver.execute_script("arguments[0].scrollIntoView(true);", last_card[-1])
+                random_delay(1, 2)
+        except:
+            pass
+
+        # Method 3: Scroll to page bottom
         scraper.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        random_delay(2, 4)
+
+        # Method 4: Scroll down by increments (sometimes works better)
+        current_scroll = scraper.driver.execute_script("return window.pageYOffset;")
+        scraper.driver.execute_script(f"window.scrollTo(0, {current_scroll + 1000});")
+
+        # Wait longer for content to load
+        random_delay(3, 5)
 
     print(f"\n✅ Found {len(all_book_urls)} total books to download")
 
