@@ -688,7 +688,6 @@ def download_books_from_category(scraper, category_url, max_scrolls=100, batch_s
 
     all_book_urls = set()
     scroll_attempts = 0
-    no_new_books_count = 0
     last_count = 0
 
     while scroll_attempts < max_scrolls:
@@ -717,13 +716,11 @@ def download_books_from_category(scraper, category_url, max_scrolls=100, batch_s
 
         print(f"📜 Scroll {scroll_attempts}/{max_scrolls} - Total books: {current_count} (+{new_found} new)")
 
-        if new_found == 0:
-            no_new_books_count += 1
-            if no_new_books_count >= 5:  # Increased to 5 for better coverage
-                print("⚠ No new books after 5 scrolls, all books loaded")
-                break
-        else:
-            no_new_books_count = 0  # Reset counter when we find new books
+        # Check for "no more results" element
+        no_more_results = soup.find("div", class_="no_more_result_scroll")
+        if no_more_results:
+            print("✅ Reached end of results - 'لا يوجد المزيد من النتائج'")
+            break
 
         last_count = current_count
 
