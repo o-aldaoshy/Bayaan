@@ -9,6 +9,7 @@ from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.action_chains import ActionChains
 import os
 import csv
+import requests
 
 
 # =====================================================
@@ -60,6 +61,70 @@ def validate_file(file_path, min_size=1024):
             return False
 
     return True
+
+
+def create_book_folder(base_dir, number):
+    """Create a numbered folder for a book"""
+    folder_path = os.path.join(base_dir, str(number))
+    os.makedirs(folder_path, exist_ok=True)
+    return folder_path
+
+
+def extract_image_url(soup):
+    """Extract cover image URL from page"""
+    try:
+        # Find img with itemprop="image" or class="media-object"
+        img_tag = soup.find("img", itemprop="image")
+        if not img_tag:
+            img_tag = soup.find("img", class_="media-object")
+
+        if img_tag and img_tag.get("src"):
+            img_url = img_tag["src"]
+            # Make absolute URL if relative
+            if img_url.startswith("/"):
+                img_url = "https://www.noor-book.com" + img_url
+            return img_url
+    except Exception as e:
+        print(f"⚠ Error extracting image URL: {e}")
+    return None
+
+
+def download_image(url, filepath, cookies=None):
+    """Download image from URL"""
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Referer': 'https://www.noor-book.com/'
+        }
+
+        session = requests.Session()
+        if cookies:
+            for cookie in cookies:
+                session.cookies.set(cookie['name'], cookie['value'])
+
+        response = session.get(url, headers=headers, timeout=30)
+        response.raise_for_status()
+
+        with open(filepath, 'wb') as f:
+            f.write(response.content)
+
+        return True
+    except Exception as e:
+        print(f"⚠ Error downloading image: {e}")
+        return False
+
+
+def get_image_extension(url):
+    """Get image extension from URL"""
+    url_lower = url.lower()
+    if '.png' in url_lower:
+        return '.png'
+    elif '.gif' in url_lower:
+        return '.gif'
+    elif '.webp' in url_lower:
+        return '.webp'
+    else:
+        return '.jpg'  # Default to jpg
 
 
 # =====================================================
@@ -498,36 +563,67 @@ class NoorBookSeleniumScraper:
 
 
     def extract_metadata(self, book_url):
-        """Extract book title and author"""
+        """Extract book title, author, description, category, and image URL"""
         try:
             html = self.driver.page_source
             soup = BeautifulSoup(html, "html.parser")
 
-            title_tag = soup.find("h1", class_="book-title")
-            title = title_tag.text.strip() if title_tag else "Unknown Title"
+            # Title
+            title = "Unknown Title"
+            title_tag = soup.find("span", id="trans_title_here")
+            if title_tag:
+                title = title_tag.text.strip()
+            else:
+                title_tag = soup.find("h1", class_="book-title")
+                if title_tag:
+                    title = title_tag.text.strip()
 
-            # Try multiple selectors for author
+            # Author
             author = "Unknown Author"
-
-            # Primary: span#book-writer
             author_tag = soup.find("span", id="book-writer")
             if author_tag:
                 author = author_tag.text.strip()
             else:
-                # Fallback: span with itemprop="name"
                 author_tag = soup.find("span", itemprop="name")
                 if author_tag:
                     author = author_tag.text.strip()
-                else:
-                    # Old fallback: a.book-author
-                    author_tag = soup.find("a", class_="book-author")
-                    if author_tag:
-                        author = author_tag.text.strip()
 
-            return title, author
+            # Description
+            description = ""
+            desc_tag = soup.find("p", itemprop="description")
+            if desc_tag:
+                # Get text from span.more inside or full text
+                more_span = desc_tag.find("span", class_="more")
+                if more_span:
+                    description = more_span.text.strip()
+                else:
+                    description = desc_tag.text.strip()
+
+            # Category
+            category = ""
+            cat_tag = soup.find("span", id="book-category")
+            if cat_tag:
+                category = cat_tag.text.strip()
+
+            # Image URL
+            image_url = extract_image_url(soup)
+
+            return {
+                'title': title,
+                'author': author,
+                'description': description,
+                'category': category,
+                'image_url': image_url
+            }
         except Exception as e:
             print(f"⚠ Error extracting metadata: {e}")
-            return "Unknown Title", "Unknown Author"
+            return {
+                'title': "Unknown Title",
+                'author': "Unknown Author",
+                'description': "",
+                'category': "",
+                'image_url': None
+            }
 
 
     def close(self):
@@ -662,8 +758,18 @@ def download_books_from_category(scraper, category_url, max_scrolls=100, batch_s
     book_list = list(all_book_urls)
     total_books = len(book_list)
 
+    # Initialize CSV with headers
+    if not csv_exists:
+        with open(metadata_file, "w", newline="", encoding="utf-8-sig") as f:
+            writer = csv.writer(f)
+            writer.writerow(["book_number", "title", "author", "description", "category"])
+
+    # Get cookies for image downloads
+    cookies = scraper.driver.get_cookies()
+
     for idx, book_page in enumerate(book_list, 1):
-        print(f"\n[{idx}/{total_books}] 🔎 {book_page}")
+        book_number = idx
+        print(f"\n[{book_number}/{total_books}] 🔎 {book_page}")
 
         try:
             random_delay(2, 4)
@@ -676,47 +782,79 @@ def download_books_from_category(scraper, category_url, max_scrolls=100, batch_s
                 failed_count += 1
                 continue
 
-            # Get author from book page
+            # Get all metadata from book page
             scraper.driver.get(book_page)
             random_delay(1, 2)
-            _, author = scraper.extract_metadata(book_page)
-            print(f"✍️  {author}")
+            metadata = scraper.extract_metadata(book_page)
 
-            # Prepare filename using title (no numbering)
-            filename = sanitize_filename(title)
-            local_path = os.path.join(download_dir, f"{filename}{file_ext}")
+            # Use title from get_download_link (more reliable) if available
+            if title and title != "Unknown Title":
+                metadata['title'] = title
 
-            # Skip if exists and valid
-            if os.path.exists(local_path) and validate_file(local_path):
-                print(f"✅ Already exists: {local_path}")
-                downloaded_count += 1
-                continue
+            print(f"📚 Title: {metadata['title']}")
+            print(f"✍️  Author: {metadata['author']}")
+            print(f"📁 Category: {metadata['category']}")
 
-            print(f"⬇️  Downloading ({size_text})...")
+            # Create numbered folder for this book
+            book_folder = create_book_folder(download_dir, book_number)
 
-            # Download
-            if not scraper.download_file(download_url, local_path):
-                failed_count += 1
-                continue
+            # Sanitize filename
+            safe_filename = sanitize_filename(metadata['title'])
+            if not safe_filename:
+                safe_filename = f"book_{book_number}"
 
-            # Validate
-            if not validate_file(local_path):
-                print("❌ File validation failed")
-                if os.path.exists(local_path):
-                    os.remove(local_path)
-                failed_count += 1
-                continue
+            # Download PDF
+            pdf_path = os.path.join(book_folder, f"{safe_filename}{file_ext}")
 
-            print(f"✅ Saved: {local_path}")
-            downloaded_count += 1
+            # Skip if PDF already exists and valid
+            if os.path.exists(pdf_path) and validate_file(pdf_path):
+                print(f"✅ PDF already exists: {pdf_path}")
+            else:
+                print(f"⬇️  Downloading PDF ({size_text})...")
 
-            # Save metadata
+                if not scraper.download_file(download_url, pdf_path):
+                    failed_count += 1
+                    continue
+
+                # Validate PDF
+                if not validate_file(pdf_path):
+                    print("❌ PDF validation failed")
+                    if os.path.exists(pdf_path):
+                        os.remove(pdf_path)
+                    failed_count += 1
+                    continue
+
+                print(f"✅ PDF saved: {os.path.basename(pdf_path)}")
+
+            # Download cover image
+            if metadata['image_url']:
+                img_ext = get_image_extension(metadata['image_url'])
+                img_path = os.path.join(book_folder, f"{safe_filename}{img_ext}")
+
+                if os.path.exists(img_path):
+                    print(f"✅ Image already exists: {os.path.basename(img_path)}")
+                else:
+                    print(f"🖼️  Downloading cover image...")
+                    if download_image(metadata['image_url'], img_path, cookies):
+                        print(f"✅ Image saved: {os.path.basename(img_path)}")
+                    else:
+                        print("⚠ Could not download cover image")
+            else:
+                print("⚠ No cover image URL found")
+
+            # Save metadata to CSV
             with open(metadata_file, "a", newline="", encoding="utf-8-sig") as f:
                 writer = csv.writer(f)
-                if not csv_exists or downloaded_count == 1:
-                    writer.writerow(["Title", "Author", "Size", "Download Link", "Page URL", "Local Filename"])
-                    csv_exists = True
-                writer.writerow([title, author, size_text, download_url, book_page, local_path])
+                writer.writerow([
+                    book_number,
+                    metadata['title'],
+                    metadata['author'],
+                    metadata['description'],
+                    metadata['category']
+                ])
+
+            downloaded_count += 1
+            print(f"✅ Book {book_number} complete: {book_folder}")
 
             if downloaded_count % batch_size == 0:
                 print(f"⏸  Batch pause...")
@@ -730,6 +868,7 @@ def download_books_from_category(scraper, category_url, max_scrolls=100, batch_s
     print(f"🎉 Complete!")
     print(f"✅ Downloaded: {downloaded_count}")
     print(f"❌ Failed: {failed_count}")
+    print(f"📊 Metadata saved to: {metadata_file}")
     print(f"{'='*60}")
 
 
