@@ -784,7 +784,7 @@ def download_books_from_category(scraper, category_url, max_scrolls=100, batch_s
     if not csv_exists:
         with open(metadata_file, "w", newline="", encoding="utf-8-sig") as f:
             writer = csv.writer(f)
-            writer.writerow(["book_number", "title", "author", "description", "category"])
+            writer.writerow(["book_number", "title", "author", "description", "category", "status"])
 
     # Get cookies for image downloads
     cookies = scraper.driver.get_cookies()
@@ -809,6 +809,19 @@ def download_books_from_category(scraper, category_url, max_scrolls=100, batch_s
 
             if should_skip:
                 print(f"⏭️  Skipping book: {skip_reason}")
+                # Extract metadata for restricted book
+                metadata = scraper.extract_metadata(book_page)
+                # Save to CSV with restricted status
+                with open(metadata_file, "a", newline="", encoding="utf-8-sig") as f:
+                    writer = csv.writer(f)
+                    writer.writerow([
+                        book_number,
+                        metadata['title'],
+                        metadata['author'],
+                        metadata['description'],
+                        metadata['category'],
+                        "restricted"
+                    ])
                 skipped_count += 1
                 continue
 
@@ -817,6 +830,19 @@ def download_books_from_category(scraper, category_url, max_scrolls=100, batch_s
 
             if not download_url:
                 print("❌ No download link")
+                # Extract metadata for failed book
+                metadata = scraper.extract_metadata(book_page)
+                # Save to CSV with failed status
+                with open(metadata_file, "a", newline="", encoding="utf-8-sig") as f:
+                    writer = csv.writer(f)
+                    writer.writerow([
+                        book_number,
+                        metadata['title'],
+                        metadata['author'],
+                        metadata['description'],
+                        metadata['category'],
+                        "failed"
+                    ])
                 failed_count += 1
                 continue
 
@@ -851,6 +877,17 @@ def download_books_from_category(scraper, category_url, max_scrolls=100, batch_s
                 print(f"⬇️  Downloading PDF ({size_text})...")
 
                 if not scraper.download_file(download_url, pdf_path):
+                    # Save to CSV with failed status
+                    with open(metadata_file, "a", newline="", encoding="utf-8-sig") as f:
+                        writer = csv.writer(f)
+                        writer.writerow([
+                            book_number,
+                            metadata['title'],
+                            metadata['author'],
+                            metadata['description'],
+                            metadata['category'],
+                            "failed"
+                        ])
                     failed_count += 1
                     continue
 
@@ -859,6 +896,17 @@ def download_books_from_category(scraper, category_url, max_scrolls=100, batch_s
                     print("❌ PDF validation failed")
                     if os.path.exists(pdf_path):
                         os.remove(pdf_path)
+                    # Save to CSV with failed status
+                    with open(metadata_file, "a", newline="", encoding="utf-8-sig") as f:
+                        writer = csv.writer(f)
+                        writer.writerow([
+                            book_number,
+                            metadata['title'],
+                            metadata['author'],
+                            metadata['description'],
+                            metadata['category'],
+                            "failed"
+                        ])
                     failed_count += 1
                     continue
 
@@ -888,7 +936,8 @@ def download_books_from_category(scraper, category_url, max_scrolls=100, batch_s
                     metadata['title'],
                     metadata['author'],
                     metadata['description'],
-                    metadata['category']
+                    metadata['category'],
+                    "downloaded"
                 ])
 
             downloaded_count += 1
