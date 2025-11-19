@@ -127,6 +127,28 @@ def get_image_extension(url):
         return '.jpg'  # Default to jpg
 
 
+def check_book_restrictions(soup):
+    """
+    Check if book has copyright restrictions that should cause it to be skipped.
+    Returns tuple: (should_skip, reason)
+    """
+    # Find restriction divs with the specific styling
+    restriction_divs = soup.find_all("div", class_="the-box text-center")
+
+    for div in restriction_divs:
+        div_text = div.get_text()
+
+        # Check for "الناشر بالمكتبة هو المؤلف" (Publisher is the author - personal use only)
+        if "الناشر بالمكتبة هو المؤلف" in div_text:
+            return True, "الناشر بالمكتبة هو المؤلف (personal use only)"
+
+        # Check for "حقوق النشر محفوظة" (Copyright reserved - cannot download)
+        if "حقوق النشر محفوظة" in div_text:
+            return True, "حقوق النشر محفوظة (copyright reserved)"
+
+    return False, ""
+
+
 # =====================================================
 # SELENIUM-ONLY SCRAPER CLASS
 # =====================================================
@@ -767,12 +789,28 @@ def download_books_from_category(scraper, category_url, max_scrolls=100, batch_s
     # Get cookies for image downloads
     cookies = scraper.driver.get_cookies()
 
+    skipped_count = 0
+
     for idx, book_page in enumerate(book_list, 1):
         book_number = idx
         print(f"\n[{book_number}/{total_books}] 🔎 {book_page}")
 
         try:
             random_delay(2, 4)
+
+            # Navigate to book page first to check for restrictions
+            scraper.driver.get(book_page)
+            random_delay(2, 3)
+
+            # Check for copyright restrictions
+            html = scraper.driver.page_source
+            soup = BeautifulSoup(html, "html.parser")
+            should_skip, skip_reason = check_book_restrictions(soup)
+
+            if should_skip:
+                print(f"⏭️  Skipping book: {skip_reason}")
+                skipped_count += 1
+                continue
 
             # Get download link and title
             download_url, size_text, file_ext, title = scraper.get_download_link(book_page)
@@ -867,6 +905,7 @@ def download_books_from_category(scraper, category_url, max_scrolls=100, batch_s
     print(f"\n{'='*60}")
     print(f"🎉 Complete!")
     print(f"✅ Downloaded: {downloaded_count}")
+    print(f"⏭️  Skipped (restricted): {skipped_count}")
     print(f"❌ Failed: {failed_count}")
     print(f"📊 Metadata saved to: {metadata_file}")
     print(f"{'='*60}")
