@@ -982,6 +982,137 @@ def download_books_from_category(scraper, category_url, max_scrolls=100, batch_s
     print(f"{'='*60}")
 
 
+def get_predefined_categories():
+    """
+    Return the predefined list of Islamic categories to download
+
+    Returns:
+        List of tuples: [(category_name, category_url), ...]
+    """
+    categories = [
+        ("آداب وأخلاق إسلامية", "https://www.noor-book.com/tag/آداب-وأخلاق-إسلامية"),
+        ("أبو حنيفة النعمان", "https://www.noor-book.com/tag/أبو-حنيفة-النعمان"),
+        ("أبو هريرة", "https://www.noor-book.com/tag/أبو-هريرة"),
+        ("أحاديث الأحكام", "https://www.noor-book.com/tag/أحاديث-الأحكام"),
+        ("أحكام الجهاد فى الإسلام", "https://www.noor-book.com/tag/أحكام-الجهاد-فى-الإسلام"),
+        ("أحكام الشريعة الإسلامية", "https://www.noor-book.com/tag/أحكام-الشريعة-الإسلامية"),
+        ("أحمد بن حنبل", "https://www.noor-book.com/tag/أحمد-بن-حنبل"),
+        ("أحوال المسلمين فى العالم", "https://www.noor-book.com/tag/أحوال-المسلمين-فى-العالم"),
+        ("أدعية وأذكار إسلامية", "https://www.noor-book.com/tag/أدعية-وأذكار-إسلامية"),
+        ("أركان الإسلام والإيمان", "https://www.noor-book.com/tag/أركان-الإسلام-والإيمان"),
+        ("أسماء الله الحسنى", "https://www.noor-book.com/tag/أسماء-الله-الحسنى"),
+        ("أصول الدين", "https://www.noor-book.com/tag/أصول-الدين"),
+        ("ابن تيمية", "https://www.noor-book.com/tag/ابن-تيمية"),
+        ("ابن عثيمين", "https://www.noor-book.com/tag/ابن-عثيمين"),
+        ("ابن قيم الجوزية", "https://www.noor-book.com/tag/ابن-قيم-الجوزية"),
+        ("ابن كثير", "https://www.noor-book.com/tag/ابن-كثير"),
+        ("اسرائيل فى الاسلام", "https://www.noor-book.com/tag/اسرائيل-فى-الاسلام"),
+        ("الأحاديث الضعيفة", "https://www.noor-book.com/tag/الأحاديث-الضعيفة"),
+        ("الألباني", "https://www.noor-book.com/tag/الألباني"),
+        ("الأمر بالمعروف والنهي عن المنكر", "https://www.noor-book.com/tag/الأمر-بالمعروف-والنهي-عن-المنكر"),
+        ("الإسلام مقارنة أديان", "https://www.noor-book.com/tag/الإسلام-مقارنة-أديان"),
+        ("الإعجاز العلمي في القرآن والسنة", "https://www.noor-book.com/tag/الإعجاز-العلمي-في-القرآن-والسنة"),
+        ("الإيمان بالله", "https://www.noor-book.com/tag/الإيمان-بالله"),
+        ("الاحاديث الصحيحة", "https://www.noor-book.com/tag/الاحاديث-الصحيحة"),
+        ("الاسلام والمسيحية", "https://www.noor-book.com/tag/الاسلام-والمسيحية"),
+        ("الاسلام واليهودية", "https://www.noor-book.com/tag/الاسلام-واليهودية"),
+        ("البخاري ومسلم", "https://www.noor-book.com/tag/البخاري-ومسلم"),
+        ("التجويد والقراءات", "https://www.noor-book.com/tag/التجويد-والقراءات"),
+        ("التصوف الاسلامي", "https://www.noor-book.com/tag/التصوف-الاسلامي"),
+        ("التوحيد", "https://www.noor-book.com/tag/التوحيد"),
+        ("الثقافة الإسلامية", "https://www.noor-book.com/tag/الثقافة-الإسلامية"),
+        ("الجرح والتعديل", "https://www.noor-book.com/tag/الجرح-والتعديل"),
+        ("الجنة والنار", "https://www.noor-book.com/tag/الجنة-والنار"),
+        ("الحج والعمرة", "https://www.noor-book.com/tag/الحج-والعمرة"),
+        ("الحركات الاسلامية", "https://www.noor-book.com/tag/الحركات-الاسلامية"),
+        ("الحسنات والسيئات", "https://www.noor-book.com/tag/الحسنات-والسيئات"),
+        ("الحقوق فى الإسلام", "https://www.noor-book.com/tag/الحقوق-فى-الإسلام"),
+        ("الخطب الاسلامية المكتوبة", "https://www.noor-book.com/tag/الخطب-الاسلامية-المكتوبة"),
+        ("الدعوة الإسلامية", "https://www.noor-book.com/tag/الدعوة-الإسلامية"),
+        ("الرقائق والزهد", "https://www.noor-book.com/tag/الرقائق-والزهد"),
+        ("الزكاة", "https://www.noor-book.com/tag/الزكاة"),
+        ("الزواج والحياة الزوجية فى الاسلام", "https://www.noor-book.com/tag/الزواج-والحياة-الزوجية-فى-الاسلام"),
+        ("السحر والجن في الاسلام", "https://www.noor-book.com/tag/السحر-والجن-في-الاسلام"),
+        ("السنة النبوية", "https://www.noor-book.com/tag/السنة-النبوية"),
+        ("السياسة الإسلامية", "https://www.noor-book.com/tag/السياسة-الإسلامية"),
+        ("الشافعي", "https://www.noor-book.com/tag/الشافعي"),
+        ("الشريعة الإسلامية", "https://www.noor-book.com/tag/الشريعة-الإسلامية"),
+        ("الصلاة", "https://www.noor-book.com/tag/الصلاة"),
+        ("الصيام وشهر رمضان", "https://www.noor-book.com/tag/الصيام-وشهر-رمضان"),
+        ("الطفل المسلم", "https://www.noor-book.com/tag/الطفل-المسلم"),
+        ("الطوائف والمذاهب الاسلامية", "https://www.noor-book.com/tag/الطوائف-والمذاهب-الاسلامية"),
+        ("العبادات الإسلامية", "https://www.noor-book.com/tag/العبادات-الإسلامية"),
+        ("العقيدة الإسلامية", "https://www.noor-book.com/tag/العقيدة-الإسلامية"),
+        ("الفتاوى الإسلامية", "https://www.noor-book.com/tag/الفتاوى-الإسلامية"),
+        ("الفرائض الإسلامية", "https://www.noor-book.com/tag/الفرائض-الإسلامية"),
+        ("الفقة المالكي", "https://www.noor-book.com/tag/الفقة-المالكي"),
+        ("الفقه الإسلامي", "https://www.noor-book.com/tag/الفقه-الإسلامي"),
+        ("الفقه الشافعي", "https://www.noor-book.com/tag/الفقه-الشافعي"),
+        ("الفلسفة الإسلامية", "https://www.noor-book.com/tag/الفلسفة-الإسلامية"),
+        ("الفلسفة والفكر الاسلامي", "https://www.noor-book.com/tag/الفلسفة-والفكر-الاسلامي"),
+        ("القرآن الكريم", "https://www.noor-book.com/tag/القرآن-الكريم"),
+        ("القصائد والمتون", "https://www.noor-book.com/tag/القصائد-والمتون"),
+        ("القصص الاسلامية", "https://www.noor-book.com/tag/القصص-الاسلامية"),
+        ("القضاء والعدل الاسلامي", "https://www.noor-book.com/tag/القضاء-والعدل-الاسلامي"),
+        ("المذهب السني", "https://www.noor-book.com/tag/المذهب-السني"),
+        ("المذهب الشيعي", "https://www.noor-book.com/tag/المذهب-الشيعي"),
+        ("المرأة المسلمة والمرأة فى الاسلام", "https://www.noor-book.com/tag/المرأة-المسلمة-والمرأة-فى-الاسلام"),
+        ("المسانيد", "https://www.noor-book.com/tag/المسانيد"),
+        ("المسجد والمساجد", "https://www.noor-book.com/tag/المسجد-والمساجد"),
+        ("المصاحف الشريفة", "https://www.noor-book.com/tag/المصاحف-الشريفة"),
+        ("المعارك والغزوات الاسلامية", "https://www.noor-book.com/tag/المعارك-والغزوات-الاسلامية"),
+        ("النفسية الاجتماعية الإسلامية", "https://www.noor-book.com/tag/النفسية-الاجتماعية-الإسلامية"),
+        ("النوافل", "https://www.noor-book.com/tag/النوافل"),
+        ("الولاء والبراء", "https://www.noor-book.com/tag/الولاء-والبراء"),
+        ("تأملات قرآنية", "https://www.noor-book.com/tag/تأملات-قرآنية"),
+        ("تفسير الأحلام Dreams", "https://www.noor-book.com/tag/تفسير-الأحلام-dreams"),
+        ("تفسير القرآن الكريم", "https://www.noor-book.com/tag/تفسير-القرآن-الكريم"),
+        ("توحيد الأسماء والصفات", "https://www.noor-book.com/tag/توحيد-الأسماء-والصفات"),
+        ("حجاب المرأة المسلمة", "https://www.noor-book.com/tag/حجاب-المرأة-المسلمة"),
+        ("حفظ القرآن الكريم", "https://www.noor-book.com/tag/حفظ-القرآن-الكريم"),
+        ("خطب اسلامية مكتوبة", "https://www.noor-book.com/tag/خطب-اسلامية-مكتوبة"),
+        ("خطب الجمعة الإسلامية", "https://www.noor-book.com/tag/خطب-الجمعة-الإسلامية"),
+        ("دراسات إسلامية", "https://www.noor-book.com/tag/دراسات-إسلامية"),
+        ("سند الأحاديث الشريفة", "https://www.noor-book.com/tag/سند-الأحاديث-الشريفة"),
+        ("شخصيات إسلامية", "https://www.noor-book.com/tag/شخصيات-إسلامية"),
+        ("شرح أحاديث", "https://www.noor-book.com/tag/شرح-أحاديث"),
+        ("شهر رمضان", "https://www.noor-book.com/tag/شهر-رمضان"),
+        ("علوم القرآن الكريم", "https://www.noor-book.com/tag/علوم-القرآن-الكريم"),
+        ("عيسى عليه السلام فى الاسلام", "https://www.noor-book.com/tag/عيسى-عليه-السلام-فى-الاسلام"),
+        ("فضائل الأعمال", "https://www.noor-book.com/tag/فضائل-الأعمال"),
+        ("فضائل المدينة النبوية", "https://www.noor-book.com/tag/فضائل-المدينة-النبوية"),
+        ("فقه البيع", "https://www.noor-book.com/tag/فقه-البيع"),
+        ("فقه الطهارة", "https://www.noor-book.com/tag/فقه-الطهارة"),
+        ("فقه العبادات", "https://www.noor-book.com/tag/فقه-العبادات"),
+        ("فقه المعاملات", "https://www.noor-book.com/tag/فقه-المعاملات"),
+        ("فقه حنبلي", "https://www.noor-book.com/tag/فقه-حنبلي"),
+        ("فقه مقارن", "https://www.noor-book.com/tag/فقه-مقارن"),
+        ("فقهاء وأئمة", "https://www.noor-book.com/tag/فقهاء-وأئمة"),
+        ("قضايا المسلمين", "https://www.noor-book.com/tag/قضايا-المسلمين"),
+        ("ليلة القدر", "https://www.noor-book.com/tag/ليلة-القدر"),
+        ("متون الحديث الشريف", "https://www.noor-book.com/tag/متون-الحديث-الشريف"),
+        ("مجلات إسلامية", "https://www.noor-book.com/tag/مجلات-إسلامية"),
+        ("محاسن الإسلام", "https://www.noor-book.com/tag/محاسن-الإسلام"),
+        ("مخطوطات إسلامية", "https://www.noor-book.com/tag/مخطوطات-إسلامية"),
+        ("مصطلح الحديث الشريف", "https://www.noor-book.com/tag/مصطلح-الحديث-الشريف"),
+        ("مطويات دعوية", "https://www.noor-book.com/tag/مطويات-دعوية"),
+        ("معالم إسلامية", "https://www.noor-book.com/tag/معالم-إسلامية"),
+        ("معاملات إسلامية", "https://www.noor-book.com/tag/معاملات-إسلامية"),
+        ("مقاصد الشريعة الاسلامية", "https://www.noor-book.com/tag/مقاصد-الشريعة-الاسلامية"),
+        ("نهاية الزمان وعلامات الساعة", "https://www.noor-book.com/tag/نهاية-الزمان-وعلامات-الساعة"),
+        ("وضوء وطهارة", "https://www.noor-book.com/tag/وضوء-وطهارة"),
+        ("يوم القيامة واليوم الاخر", "https://www.noor-book.com/tag/يوم-القيامة-واليوم-الاخر"),
+    ]
+
+    print(f"\n✅ Using predefined list of {len(categories)} Islamic categories")
+    for idx, (name, url) in enumerate(categories[:10], 1):
+        print(f"  {idx}. {name}")
+    if len(categories) > 10:
+        print(f"  ... and {len(categories) - 10} more")
+
+    return categories
+
+
 def extract_categories_from_page(scraper, categories_page_url):
     """
     Extract all category URLs from a categories listing page
@@ -1152,15 +1283,10 @@ if __name__ == "__main__":
     PASSWORD = "3Cc'#B9pig"
 
     # ========== CONFIGURATION ==========
-    # Set to True to download ALL categories from a page, False for single category
+    # Set to True to download ALL predefined Islamic categories, False for single category
     MULTI_CATEGORY_MODE = True
-
-    # For multi-category mode: URL of the page with category listings
-    # IMPORTANT: Use a page where all categories are visible/expanded
-    # Examples:
-    #   - Islamic categories page with all subcategories visible
-    #   - Or navigate to the page and manually expand the categories section first
-    CATEGORIES_PAGE_URL = "https://www.noor-book.com/"
+    # Note: Predefined categories are hardcoded in get_predefined_categories() function
+    # Total: 112 Islamic categories will be downloaded
 
     # For single category mode: specific category URL
     SINGLE_CATEGORY_URL = "https://www.noor-book.com/tag/آداب-وأخلاق-إسلامية"
@@ -1190,9 +1316,9 @@ if __name__ == "__main__":
         scraper.login(EMAIL, PASSWORD)
 
         if MULTI_CATEGORY_MODE:
-            # Multi-category mode: extract all categories and download from each
-            print("\n📌 STEP 2: Extracting all categories...")
-            categories = extract_categories_from_page(scraper, CATEGORIES_PAGE_URL)
+            # Multi-category mode: use predefined list of Islamic categories
+            print("\n📌 STEP 2: Loading predefined categories...")
+            categories = get_predefined_categories()
 
             if not categories:
                 print("❌ No categories found!")
