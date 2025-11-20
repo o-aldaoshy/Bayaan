@@ -64,8 +64,9 @@ def validate_file(file_path, min_size=1024):
 
 
 def create_book_folder(base_dir, number):
-    """Create a numbered folder for a book"""
-    folder_path = os.path.join(base_dir, str(number))
+    """Create a numbered folder for a book with 6-digit formatting"""
+    folder_name = f"{number:06d}"
+    folder_path = os.path.join(base_dir, folder_name)
     os.makedirs(folder_path, exist_ok=True)
     return folder_path
 
@@ -666,17 +667,21 @@ class NoorBookSeleniumScraper:
 # =====================================================
 
 def download_books_from_category(scraper, category_url, max_scrolls=100, batch_size=10,
-                                 download_dir="noor_books", metadata_file="metadata.csv"):
+                                 download_dir="noor_books", metadata_file="metadata.csv", start_count=0):
     """
     Download books from a category with infinite scroll
 
     Args:
         max_scrolls: Maximum number of times to scroll down (default 100)
+        start_count: Starting number for book numbering (to continue from previous downloads)
+
+    Returns:
+        int: The final count of downloaded books (for continuing to next category)
     """
     os.makedirs(download_dir, exist_ok=True)
 
     csv_exists = os.path.exists(metadata_file)
-    downloaded_count = 0
+    downloaded_count = start_count
     failed_count = 0
 
     print(f"\n{'='*60}")
@@ -813,9 +818,9 @@ def download_books_from_category(scraper, category_url, max_scrolls=100, batch_s
 
     skipped_count = 0
 
-    for idx, book_page in enumerate(book_list, 1):
+    for idx, book_page in enumerate(book_list, start_count + 1):
         book_number = idx
-        print(f"\n[{book_number}/{total_books}] 🔎 {book_page}")
+        print(f"\n[{book_number}] 🔎 {book_page}")
 
         try:
             random_delay(2, 4)
@@ -980,6 +985,8 @@ def download_books_from_category(scraper, category_url, max_scrolls=100, batch_s
     print(f"❌ Failed: {failed_count}")
     print(f"📊 Metadata saved to: {metadata_file}")
     print(f"{'='*60}")
+
+    return downloaded_count
 
 
 def get_predefined_categories():
@@ -1226,9 +1233,7 @@ def download_all_categories(scraper, categories, max_scrolls=100, batch_size=10,
         category_delay_max: Maximum seconds to wait between categories
     """
     total_categories = len(categories)
-    overall_downloaded = 0
-    overall_skipped = 0
-    overall_failed = 0
+    total_count = 0
 
     print(f"\n{'='*60}")
     print(f"🚀 Starting multi-category download")
@@ -1239,21 +1244,22 @@ def download_all_categories(scraper, categories, max_scrolls=100, batch_size=10,
         print(f"\n{'#'*60}")
         print(f"📂 CATEGORY {idx}/{total_categories}: {category_name}")
         print(f"🔗 {category_url}")
+        print(f"Continuing from count: {total_count}")
         print(f"{'#'*60}")
 
         try:
             # Resolve URL (in case it's a fake URL)
             resolved_url = scraper.resolve_category_url(category_url)
 
-            # Download books from this category
-            # Note: We don't pass return values, just track progress in output
-            download_books_from_category(
+            # Download books from this category, continuing numbering from previous categories
+            total_count = download_books_from_category(
                 scraper,
                 resolved_url,
                 max_scrolls=max_scrolls,
                 batch_size=batch_size,
                 download_dir=download_dir,
-                metadata_file=metadata_file
+                metadata_file=metadata_file,
+                start_count=total_count
             )
 
             # If not the last category, wait before moving to next
@@ -1270,6 +1276,7 @@ def download_all_categories(scraper, categories, max_scrolls=100, batch_size=10,
     print(f"\n{'='*60}")
     print(f"🎉 ALL CATEGORIES COMPLETE!")
     print(f"📊 Processed {total_categories} categories")
+    print(f"📚 Total books downloaded: {total_count}")
     print(f"{'='*60}")
 
 
