@@ -171,7 +171,7 @@ class NoorBookDownloader:
             logger.error(f"❌ Failed to download {filename}: {e}")
             return False
 
-    def download_category(self, category_url, max_pages=10, max_books=None, delay=2):
+    def download_category(self, category_url, max_pages=10, max_books=None, delay=2, start_count=0):
         """
         Download all books from a category
 
@@ -180,8 +180,12 @@ class NoorBookDownloader:
             max_pages: Maximum number of pages to scrape
             max_books: Maximum number of books to download (None = all)
             delay: Delay between requests in seconds
+            start_count: Starting number for file naming (to continue from previous downloads)
+
+        Returns:
+            int: The final count of downloaded books (for continuing to next category)
         """
-        downloaded_count = 0
+        downloaded_count = start_count
 
         # Create category-specific subdirectory
         category_name = category_url.split('/')[-1].split('?')[0]
@@ -210,7 +214,7 @@ class NoorBookDownloader:
             for i, book_url in enumerate(book_links, 1):
                 if max_books and downloaded_count >= max_books:
                     logger.info(f"Reached maximum book limit ({max_books})")
-                    return
+                    return downloaded_count
 
                 logger.info(f"\n[{downloaded_count + 1}] Processing book {i}/{len(book_links)}")
 
@@ -254,6 +258,8 @@ class NoorBookDownloader:
         logger.info(f"✅ Download complete! Total books downloaded: {downloaded_count}")
         logger.info(f"{'='*60}")
 
+        return downloaded_count
+
 
 def main():
     """Main function to run the downloader"""
@@ -261,16 +267,33 @@ def main():
     # Initialize downloader
     downloader = NoorBookDownloader(download_dir='noor_books')
 
-    # Category URL - the one you provided
-    category_url = 'https://www.noor-book.com/tag/%D8%A2%D8%AF%D8%A7%D8%A8-%D9%88%D8%A3%D8%AE%D9%84%D8%A7%D9%82-%D8%A5%D8%B3%D9%84%D8%A7%D9%85%D9%8A%D8%A9'
+    # Keep track of total books downloaded across all categories
+    total_count = 0
 
-    # Download books from category
-    downloader.download_category(
-        category_url=category_url,
-        max_pages=10,        # Scrape up to 10 pages
-        max_books=50,        # Download up to 50 books (set to None for all)
-        delay=3              # 3 second delay between requests
-    )
+    # Example: Download from multiple categories with continuous numbering
+    categories = [
+        'https://www.noor-book.com/tag/%D8%A2%D8%AF%D8%A7%D8%A8-%D9%88%D8%A3%D8%AE%D9%84%D8%A7%D9%82-%D8%A5%D8%B3%D9%84%D8%A7%D9%85%D9%8A%D8%A9',
+        # Add more category URLs here as needed
+    ]
+
+    for category_url in categories:
+        logger.info(f"\n{'='*80}")
+        logger.info(f"Starting category: {category_url}")
+        logger.info(f"Continuing from count: {total_count}")
+        logger.info(f"{'='*80}\n")
+
+        # Download books from category, starting from where we left off
+        total_count = downloader.download_category(
+            category_url=category_url,
+            max_pages=10,         # Scrape up to 10 pages
+            max_books=None,       # Download all books (or set a limit)
+            delay=3,              # 3 second delay between requests
+            start_count=total_count  # Continue numbering from previous category
+        )
+
+    logger.info(f"\n{'='*80}")
+    logger.info(f"🎉 ALL DOWNLOADS COMPLETE! Total books: {total_count}")
+    logger.info(f"{'='*80}")
 
 
 if __name__ == '__main__':
