@@ -957,6 +957,121 @@ def download_books_from_category(scraper, category_url, max_scrolls=100, batch_s
     print(f"{'='*60}")
 
 
+def extract_categories_from_page(scraper, categories_page_url):
+    """
+    Extract all category URLs from a categories listing page
+
+    Args:
+        categories_page_url: URL to the page with category listings
+
+    Returns:
+        List of tuples: [(category_name, category_url), ...]
+    """
+    print(f"\n{'='*60}")
+    print(f"📑 Extracting categories from page")
+    print(f"🔗 URL: {categories_page_url}")
+    print(f"{'='*60}")
+
+    try:
+        scraper.driver.get(categories_page_url)
+        random_delay(3, 5)
+
+        html = scraper.driver.page_source
+        soup = BeautifulSoup(html, "html.parser")
+
+        categories = []
+
+        # Find all category links in the format /tag/...
+        category_links = soup.find_all("a", href=lambda x: x and x.startswith("/tag/"))
+
+        for link in category_links:
+            href = link.get("href")
+            # Get category name from the h3 tag inside the link
+            h3_tag = link.find("h3")
+            if h3_tag:
+                category_name = h3_tag.text.strip()
+            else:
+                # Fallback: extract name from URL
+                category_name = href.replace("/tag/", "").replace("-", " ")
+
+            category_url = "https://www.noor-book.com" + href
+
+            # Avoid duplicates
+            if (category_name, category_url) not in categories:
+                categories.append((category_name, category_url))
+
+        print(f"\n✅ Found {len(categories)} categories")
+        for idx, (name, url) in enumerate(categories[:10], 1):
+            print(f"  {idx}. {name}")
+        if len(categories) > 10:
+            print(f"  ... and {len(categories) - 10} more")
+
+        return categories
+
+    except Exception as e:
+        print(f"❌ Error extracting categories: {e}")
+        return []
+
+
+def download_all_categories(scraper, categories, max_scrolls=100, batch_size=10,
+                           download_dir="noor_books", metadata_file="metadata.csv",
+                           category_delay_min=30, category_delay_max=60):
+    """
+    Download books from multiple categories with delays between each
+
+    Args:
+        categories: List of tuples [(category_name, category_url), ...]
+        category_delay_min: Minimum seconds to wait between categories
+        category_delay_max: Maximum seconds to wait between categories
+    """
+    total_categories = len(categories)
+    overall_downloaded = 0
+    overall_skipped = 0
+    overall_failed = 0
+
+    print(f"\n{'='*60}")
+    print(f"🚀 Starting multi-category download")
+    print(f"📚 Total categories: {total_categories}")
+    print(f"{'='*60}")
+
+    for idx, (category_name, category_url) in enumerate(categories, 1):
+        print(f"\n{'#'*60}")
+        print(f"📂 CATEGORY {idx}/{total_categories}: {category_name}")
+        print(f"🔗 {category_url}")
+        print(f"{'#'*60}")
+
+        try:
+            # Resolve URL (in case it's a fake URL)
+            resolved_url = scraper.resolve_category_url(category_url)
+
+            # Download books from this category
+            # Note: We don't pass return values, just track progress in output
+            download_books_from_category(
+                scraper,
+                resolved_url,
+                max_scrolls=max_scrolls,
+                batch_size=batch_size,
+                download_dir=download_dir,
+                metadata_file=metadata_file
+            )
+
+            # If not the last category, wait before moving to next
+            if idx < total_categories:
+                wait_time = random.randint(category_delay_min, category_delay_max)
+                print(f"\n⏳ Waiting {wait_time} seconds before next category...")
+                time.sleep(wait_time)
+
+        except Exception as e:
+            print(f"\n❌ Error processing category '{category_name}': {e}")
+            print(f"⏭️  Skipping to next category...")
+            continue
+
+    print(f"\n{'='*60}")
+    print(f"🎉 ALL CATEGORIES COMPLETE!")
+    print(f"📊 Processed {total_categories} categories")
+    print(f"{'='*60}")
+
+
 # =====================================================
 # MAIN
 # =====================================================
@@ -965,11 +1080,29 @@ if __name__ == "__main__":
 
     EMAIL = "n8n@bayaan.net"
     PASSWORD = "3Cc'#B9pig"
-    CATEGORY_URL = "https://www.noor-book.com/tag/آداب-وأخلاق-إسلامية"
+
+    # ========== CONFIGURATION ==========
+    # Set to True to download ALL categories from a page, False for single category
+    MULTI_CATEGORY_MODE = True
+
+    # For multi-category mode: URL of the page with category listings
+    CATEGORIES_PAGE_URL = "https://www.noor-book.com/"
+
+    # For single category mode: specific category URL
+    SINGLE_CATEGORY_URL = "https://www.noor-book.com/tag/آداب-وأخلاق-إسلامية"
+
+    # Delay between categories (in seconds) to avoid detection
+    CATEGORY_DELAY_MIN = 30  # Minimum wait time
+    CATEGORY_DELAY_MAX = 60  # Maximum wait time
+    # ===================================
 
     print("="*60)
     print("🚀 NOOR-BOOK DOWNLOADER (SELENIUM-ONLY)")
     print("📌 Browser will stay VISIBLE so you can solve CAPTCHA")
+    if MULTI_CATEGORY_MODE:
+        print("📚 MODE: Multi-category (downloading from ALL categories)")
+    else:
+        print("📚 MODE: Single category")
     print("="*60)
 
     scraper = None
@@ -982,21 +1115,40 @@ if __name__ == "__main__":
         print("\n📌 STEP 1: Logging in...")
         scraper.login(EMAIL, PASSWORD)
 
-        # Resolve URL
-        print("\n📌 STEP 2: Resolving category URL...")
-        CATEGORY_URL = scraper.resolve_category_url(CATEGORY_URL)
-        print(f"📂 Using URL: {CATEGORY_URL}")
+        if MULTI_CATEGORY_MODE:
+            # Multi-category mode: extract all categories and download from each
+            print("\n📌 STEP 2: Extracting all categories...")
+            categories = extract_categories_from_page(scraper, CATEGORIES_PAGE_URL)
 
-        # Download
-        print("\n📌 STEP 3: Downloading books...")
-        download_books_from_category(
-            scraper,
-            CATEGORY_URL,
-            max_scrolls=100,  # Maximum number of scrolls (not pages!)
-            batch_size=10,
-            download_dir="noor_books",
-            metadata_file="metadata.csv"
-        )
+            if not categories:
+                print("❌ No categories found!")
+            else:
+                print(f"\n📌 STEP 3: Downloading books from {len(categories)} categories...")
+                download_all_categories(
+                    scraper,
+                    categories,
+                    max_scrolls=100,
+                    batch_size=10,
+                    download_dir="noor_books",
+                    metadata_file="metadata.csv",
+                    category_delay_min=CATEGORY_DELAY_MIN,
+                    category_delay_max=CATEGORY_DELAY_MAX
+                )
+        else:
+            # Single category mode: download from one category only
+            print("\n📌 STEP 2: Resolving category URL...")
+            resolved_url = scraper.resolve_category_url(SINGLE_CATEGORY_URL)
+            print(f"📂 Using URL: {resolved_url}")
+
+            print("\n📌 STEP 3: Downloading books...")
+            download_books_from_category(
+                scraper,
+                resolved_url,
+                max_scrolls=100,
+                batch_size=10,
+                download_dir="noor_books",
+                metadata_file="metadata.csv"
+            )
 
         print("\n✨ All done!")
 
