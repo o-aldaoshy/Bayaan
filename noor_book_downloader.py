@@ -235,7 +235,7 @@ class NoorBookDownloader:
 
                 # Create filename
                 safe_title = self.sanitize_filename(title)
-                filename = os.path.join(category_dir, f"{downloaded_count + 1:04d}_{safe_title}{file_ext}")
+                filename = os.path.join(category_dir, f"{downloaded_count + 1:06d}_{safe_title}{file_ext}")
 
                 # Skip if already exists
                 if os.path.exists(filename):
