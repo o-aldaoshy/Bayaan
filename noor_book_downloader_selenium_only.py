@@ -354,6 +354,11 @@ class NoorBookSeleniumScraper:
         """Resolve Arabic category URL to real hashed URL"""
         print(f"🔎 Resolving category URL...")
 
+        # If URL already contains /tag/, skip resolution and use it directly
+        if "/tag/" in fake_url:
+            print(f"✅ Using provided tag URL directly")
+            return fake_url
+
         try:
             html = self.get_page_source(fake_url)
             if not html:
@@ -976,6 +981,27 @@ def extract_categories_from_page(scraper, categories_page_url):
         scraper.driver.get(categories_page_url)
         random_delay(3, 5)
 
+        # Try to expand all collapsed sections to reveal hidden categories
+        print("🔍 Attempting to expand collapsed category sections...")
+        try:
+            # Find all collapse toggle links (accordion headers)
+            collapse_toggles = scraper.driver.find_elements(By.CSS_SELECTOR, "[data-toggle='collapse']")
+            print(f"   Found {len(collapse_toggles)} collapsible sections")
+
+            for toggle in collapse_toggles:
+                try:
+                    # Check if it's collapsed (has 'collapsed' class)
+                    if 'collapsed' in toggle.get_attribute('class'):
+                        scraper.driver.execute_script("arguments[0].click();", toggle)
+                        random_delay(0.5, 1)
+                except:
+                    continue
+
+            print("✅ Expanded all sections")
+            random_delay(2, 3)
+        except Exception as e:
+            print(f"⚠ Could not expand sections: {e}")
+
         html = scraper.driver.page_source
         soup = BeautifulSoup(html, "html.parser")
 
@@ -1086,6 +1112,10 @@ if __name__ == "__main__":
     MULTI_CATEGORY_MODE = True
 
     # For multi-category mode: URL of the page with category listings
+    # IMPORTANT: Use a page where all categories are visible/expanded
+    # Examples:
+    #   - Islamic categories page with all subcategories visible
+    #   - Or navigate to the page and manually expand the categories section first
     CATEGORIES_PAGE_URL = "https://www.noor-book.com/"
 
     # For single category mode: specific category URL
