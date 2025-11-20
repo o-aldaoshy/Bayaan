@@ -729,7 +729,8 @@ def download_books_from_category(scraper, category_url, max_scrolls=100, batch_s
 
         last_count = current_count
 
-        # Try multiple scroll methods to trigger infinite scroll
+        # Aggressive scrolling to trigger infinite scroll
+        # Many infinite scroll implementations need multiple scroll events to trigger
 
         # Method 1: Try clicking "load more" button if it exists
         try:
@@ -755,24 +756,43 @@ def download_books_from_category(scraper, category_url, max_scrolls=100, batch_s
         except:
             pass
 
-        # Method 2: Scroll to the last book card (more reliable than page bottom)
+        # Method 2: Scroll to the last book card multiple times
         try:
-            last_card = scraper.driver.find_elements(By.CSS_SELECTOR, "div.book-restult, div.book-result, div.book-card")
-            if last_card:
-                scraper.driver.execute_script("arguments[0].scrollIntoView(true);", last_card[-1])
-                random_delay(1, 2)
+            last_cards = scraper.driver.find_elements(By.CSS_SELECTOR, "div.book-restult, div.book-result, div.book-card")
+            if last_cards:
+                # Scroll to last card
+                scraper.driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'end'});", last_cards[-1])
+                random_delay(1, 1.5)
+
+                # Scroll a bit more past the last card
+                scraper.driver.execute_script("window.scrollBy(0, 500);")
+                random_delay(0.5, 1)
         except:
             pass
 
-        # Method 3: Scroll to page bottom
-        scraper.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        # Method 3: Scroll to page bottom multiple times (aggressive scrolling)
+        for i in range(3):
+            old_height = scraper.driver.execute_script("return document.body.scrollHeight")
+            scraper.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            random_delay(1, 1.5)
 
-        # Method 4: Scroll down by increments (sometimes works better)
+            # Trigger scroll event explicitly
+            scraper.driver.execute_script("window.dispatchEvent(new Event('scroll'));")
+            random_delay(0.5, 1)
+
+            # Check if new content loaded
+            new_height = scraper.driver.execute_script("return document.body.scrollHeight")
+            if new_height > old_height:
+                print(f"   📈 Page height increased: {old_height} -> {new_height}")
+                break
+
+        # Method 4: Scroll down by large increments
         current_scroll = scraper.driver.execute_script("return window.pageYOffset;")
-        scraper.driver.execute_script(f"window.scrollTo(0, {current_scroll + 1000});")
+        scraper.driver.execute_script(f"window.scrollTo(0, {current_scroll + 1500});")
+        random_delay(1, 1.5)
 
-        # Wait longer for content to load
-        random_delay(3, 5)
+        # Wait for AJAX/content to load
+        random_delay(4, 6)
 
     print(f"\n✅ Found {len(all_book_urls)} total books to download")
 
@@ -981,26 +1001,50 @@ def extract_categories_from_page(scraper, categories_page_url):
         scraper.driver.get(categories_page_url)
         random_delay(3, 5)
 
-        # Try to expand all collapsed sections to reveal hidden categories
-        print("🔍 Attempting to expand collapsed category sections...")
-        try:
-            # Find all collapse toggle links (accordion headers)
-            collapse_toggles = scraper.driver.find_elements(By.CSS_SELECTOR, "[data-toggle='collapse']")
-            print(f"   Found {len(collapse_toggles)} collapsible sections")
+        # Scroll down to load all accordion sections
+        print("📜 Scrolling to reveal all accordion sections...")
+        scraper.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        random_delay(2, 3)
 
-            for toggle in collapse_toggles:
+        # Try to expand all collapsed sections to reveal hidden categories
+        print("🔍 Expanding all collapsed category sections...")
+        try:
+            # Find all panel heading links (accordion headers)
+            panel_links = scraper.driver.find_elements(By.CSS_SELECTOR, ".panel-heading a[data-toggle='collapse']")
+            print(f"   Found {len(panel_links)} accordion panels")
+
+            # Click each panel to expand it
+            for idx, panel_link in enumerate(panel_links, 1):
                 try:
-                    # Check if it's collapsed (has 'collapsed' class)
-                    if 'collapsed' in toggle.get_attribute('class'):
-                        scraper.driver.execute_script("arguments[0].click();", toggle)
-                        random_delay(0.5, 1)
-                except:
+                    # Scroll to element first
+                    scraper.driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", panel_link)
+                    random_delay(0.3, 0.5)
+
+                    # Click to expand
+                    scraper.driver.execute_script("arguments[0].click();", panel_link)
+                    print(f"   ✓ Expanded panel {idx}/{len(panel_links)}")
+                    random_delay(0.5, 1)
+                except Exception as e:
+                    print(f"   ⚠ Could not expand panel {idx}: {e}")
                     continue
 
             print("✅ Expanded all sections")
-            random_delay(2, 3)
+            random_delay(3, 5)  # Wait for all content to load
         except Exception as e:
             print(f"⚠ Could not expand sections: {e}")
+
+        # Scroll through entire page to ensure all categories are loaded
+        print("📜 Scrolling through page to load all categories...")
+        total_height = scraper.driver.execute_script("return document.body.scrollHeight")
+        viewport_height = scraper.driver.execute_script("return window.innerHeight")
+
+        for scroll_pos in range(0, total_height, viewport_height // 2):
+            scraper.driver.execute_script(f"window.scrollTo(0, {scroll_pos});")
+            random_delay(0.3, 0.5)
+
+        # Scroll back to top
+        scraper.driver.execute_script("window.scrollTo(0, 0);")
+        random_delay(1, 2)
 
         html = scraper.driver.page_source
         soup = BeautifulSoup(html, "html.parser")
